@@ -29,11 +29,24 @@ let unlocked=[];try{unlocked=JSON.parse(localStorage.getItem('pollito-finales-v1
 function show(id){active=id;['title','rules','play','ending','finalChoice'].forEach(x=>$(x).classList.toggle('hidden',x!==id))}
 function badges(){const keys=Object.keys(endings);$('collection').textContent=`Finales desbloqueados: ${keys.filter(k=>unlocked.includes(k)).length} / 6`;$('badges').innerHTML=keys.map(k=>`<span class="badge ${unlocked.includes(k)?'':'lock'}" title="${unlocked.includes(k)?endings[k][0]:'Final por descubrir'}">${unlocked.includes(k)?({stress:'⚡ Colapso',money:'💸 Sin pasaje',rep:'📦 Despido',manager:'⭐ Gerente',ceo:'🏢 CEO',colmado:'🏪 Colmado'})[k]:'🔒 ???'}</span>`).join('')}
 function shuffle(a){for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
-function draw(){if(!deck.length)deck=shuffle([...cards]);return deck.pop()}
+// Hay 20 dilemas para 27 turnos normales (30 dias menos 3 evaluaciones).
+// Sin reemplazo hasta agotar el banco; al reciclar, retrasar los ultimos 7
+// (o todos menos uno en bancos pequenos) evita repeticiones cercanas.
+let recentCards=[];
+function draw(){
+if(!deck.length){
+const recent=new Set(recentCards);
+deck=[...shuffle(cards.filter(c=>recent.has(c.id))),...shuffle(cards.filter(c=>!recent.has(c.id)))];
+}
+const card=deck.pop();
+recentCards.push(card.id);
+if(recentCards.length>Math.min(7,cards.length-1))recentCards.shift();
+return card;
+}
 function paint(){stats.forEach((v,i)=>{$('v'+i).textContent=v;$('m'+i).style.width=v+'%';$('m'+i).parentElement.setAttribute('aria-valuenow',v)})}
 function evaluation(){let comment=stats[1]>=70?'«Tú tienes cara de Excel sin guardar».':stats[2]>=70?'«Se habla bien de ti. No te acomodes».':stats[0]<30?'«Tu bolsillo pidió una reunión urgente».':'«Vas resolviendo. Todavía estás en nómina». ';return {title:'Evaluación del Gerente',setup:comment,eval:true,options:[O('Aceptar más responsabilidad',[4,5,4],'El Gallo te dio tareas con un apretón de ala.'),O('Pedir apoyo y respirar',[-3,-6,2],'Recursos Humanos sugirió beber agua. Algo es algo.')]}}
 function render(){current=day%10===0?evaluation():draw();$('day').textContent='Día '+day;$('cardTitle').textContent=current.title;$('setup').textContent=current.setup;$('cardTag').textContent=current.eval?(day===30?'EVALUACIÓN FINAL · DÍA 30':'REVISIÓN DE DESEMPEÑO'):'EL DILEMA DE HOY';$('cardArt').innerHTML=art(current.eval?'boss':'normal');current.options.forEach((o,i)=>{const btn=$(i?'right':'left');btn.replaceChildren(document.createTextNode((i?'→ ':'← ')+o.text));let small=document.createElement('small');small.textContent=o.effect.map((v,n)=>v?['Plata','Estrés','Reputación'][n]+' '+(v>0?'+':'')+v:'').filter(Boolean).join(' · ');btn.append(small)});resetDrag();busy=false;$('play').classList.remove('busy');$('feedback').textContent=day===1?'Desliza la tarjeta o toca una opción.':'Otro día, otro correíto.';stats.forEach((_,i)=>$('d'+i).classList.remove('show'))}
-function start(){clearTimeout(timer);stats=[50,50,50];day=1;deck=shuffle([...cards]);show('play');paint();render()}
+function start(){clearTimeout(timer);stats=[50,50,50];day=1;recentCards=[];deck=shuffle([...cards]);show('play');paint();render()}
 function fatal(){return stats[1]>=100?'stress':stats[0]<=0?'money':stats[2]<=0?'rep':null}
 function finish(key){show('ending');const e=endings[key];$('endTitle').textContent=e[0];$('epilogue').textContent=e[1];$('endArt').innerHTML=art(e[2]);$('endLabel').textContent=key==='colmado'?'FINAL SECRETO · LA VIDA BUENA':'EXPEDIENTE CERRADO';$('endStats').textContent=`Día ${day} · Plata ${stats[0]} · Estrés ${stats[1]} · Reputación ${stats[2]}`;$('shareStatus').textContent='';if(!unlocked.includes(key))unlocked.push(key);try{localStorage.setItem('pollito-finales-v1',JSON.stringify(unlocked))}catch(e){$('shareStatus').textContent='Este navegador no permite guardar los finales.'}badges()}
 function choose(side){if(active!=='play'||busy)return;busy=true;$('play').classList.add('busy');const o=current.options[side];stats=stats.map((v,i)=>Math.max(0,Math.min(100,v+o.effect[i])));paint();o.effect.forEach((v,i)=>{$('d'+i).textContent=v?(v>0?'+':'')+v:'—';$('d'+i).classList.add('show')});$('feedback').textContent=o.line;$('card').style.transition='transform .25s, opacity .25s';$('card').style.transform=`translateX(${side?85:-85}px) rotate(${side?10:-10}deg)`;$('card').style.opacity='.35';timer=setTimeout(()=>{let end=fatal();if(end){finish(end);return}if(day===30){if(stats[2]>=80&&stats[0]>=70)show('finalChoice');else finish('manager');return}day++;render()},1050)}
